@@ -1,0 +1,15 @@
+.DS_Store
+cloudformation/.DS_Store
+code/.DS_Store
+testing/.DS_Store
+testing/reporting/
+testing/testing_assets/.DS_Store
+testing/testing_assets/test_payloads/.DS_Store
+testing/testing_assets/test_payloads/no_tags_no_error/.DS_Store
+testing/testing_assets/test_payloads/tag_no_error/.DS_Store
+testing/testing_assets/test_secrets/.DS_Store
+cli/shepard_cli/current_shepard_profile_config.txt
+cli/shepard_cli/test_1
+cli/shepard_cli.egg-info/
+cli/shepard_cli/__pycache__/
+cli/shepard_cli/shepard/

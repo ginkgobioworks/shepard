@@ -1,0 +1,6 @@
+{
+"test1": "these arguments will all cause the test payload to throw errors",
+"test2": "this is so we can check the autologger for errors.",
+"test3": 0,
+"test4": 0
+}

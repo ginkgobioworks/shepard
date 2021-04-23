@@ -1,0 +1,46 @@
+# Shepard Testing Container
+# Author: jmevorach
+
+########################### ESTABLISH BASE IMAGE ##################################
+FROM docker:dind
+MAINTAINER jacob@ginkgobioworks.com
+# ---------------------
+# SET WORKING DIRECTORY TO ROOT DIRECTORY
+# ---------------------
+WORKDIR /
+
+# ---------------------
+# APK UPDATE
+# ---------------------
+RUN apk update
+
+# ---------------------
+# APK UPGRADE
+# ---------------------
+RUN apk upgrade
+
+# ---------------------
+# APK GET OPENRC
+# ---------------------
+RUN apk add openrc --no-cache
+
+# ---------------------
+# APK GET TREE
+# ---------------------
+RUN apk add tree --no-cache
+
+# ---------------------
+# APK GET PYTHON3
+# ---------------------
+RUN apk add --no-cache --virtual .build-deps g++ python3-dev libffi-dev openssl-dev && \
+    apk add --no-cache --update python3 && \
+    apk add --no-cache py3-pip && \
+    pip3 install --upgrade pip
+
+# ---------------------
+# Entrypoint & Default cmd
+# ---------------------
+COPY testing_code.py /
+WORKDIR /
+ENTRYPOINT ["python3"]
+CMD ["testing_code.py"]

@@ -1,0 +1,2049 @@
+#  ______   __                                                      __  __
+# /      \ |  \                                                    |  \|  \
+#|  $$$$$$\| $$____    ______    ______    ______    ______    ____| $$| $$
+#| $$___\$$| $$    \  /      \  /      \  |      \  /      \  /      $$| $$
+# \$$    \ | $$$$$$$\|  $$$$$$\|  $$$$$$\  \$$$$$$\|  $$$$$$\|  $$$$$$$| $$
+# _\$$$$$$\| $$  | $$| $$    $$| $$  | $$ /      $$| $$   \$$| $$  | $$ \$$
+#|  \__f| $$| $$  | $$| $$$$$$$$| $$__/ $$|  $$$$$$$| $$      | $$__| $$ __
+# \$$    $$| $$  | $$ \$$     \| $$    $$ \$$    $$| $$       \$$    $$|  \
+#  \$$$$$$  \$$   \$$  \$$$$$$$| $$$$$$$   \$$$$$$$ \$$        \$$$$$$$ \$$
+#                              | $$
+#                              | $$
+#                               \$$
+
+#Automate Everything in CloudFormation! By Jacob Mevorach For Ginkgo Bioworks 2020
+
+Parameters:
+########################S3 PARAMETERS START HERE########################
+  InputsBucket:
+    Type: String
+    Description: Name of bucket for inputs that will trigger Shepard
+    Default: "shepard-trigger"
+
+  OutputsBucket:
+    Type: String
+    Description: Name of bucket for outputs from Shepard
+    Default: "shepard-outputs"
+
+  QuickDeployBucket:
+    Type: String
+    Description: Name of bucket for quick deploying code to from Shepard
+    Default: "shepard-quick-deploy"
+########################S3 PARAMETERS END HERE########################
+
+########################DYNAMODB PARAMETERS START HERE########################
+  TableName:
+    Type: String
+    Description: Name of the dynamoDB that Shepard uses to store calls to the architecture.
+    Default: "shepard-table"
+########################DYNAMODB PARAMETERS END HERE########################
+
+########################SECRETS MANAGER PARAMETERS START HERE########################
+  SecretsManagerName:
+    Type: String
+    Description: Name of the SecretsManager secrets store to store secret files for the architecture.
+    Default: "shepard-secrets"
+########################SECRETS MANAGER PARAMETERS END HERE########################
+
+########################BATCH PARAMETERS START HERE######################
+  BatchInstanceNames:
+    Description: This name will be given to all your batch instances for easy identification.
+    Type: String
+    Default: "shepard-batch"
+
+  DesiredRam:
+    Type: String
+    Description: How much ram you want your batch job to have access to. In MiB. This is going into the job definition. Must be an integer.
+    Default: "500000"
+
+  DesiredCPU:
+    Type: String
+    Description: How many cores you want each of your jobs to have access to. in VCPUs. This is going into the job definition. Must be an integer.
+    Default: "64"
+
+  MaxCPU:
+    Type: String
+    Description: The maximum number of cores you want running in your batch environment. in VCPUs. This is going into the job definition. Must be an integer.
+    Default: "1000000000"
+
+  InstanceTypes:
+    Type: CommaDelimitedList
+    Description: The instance types you want your compute environment to have!
+    Default: "r5.16xlarge, r5a.16xlarge, r5ad.16xlarge, r5d.16xlarge, r5dn.16xlarge, r5n.16xlarge"
+
+  LaunchTemplateName:
+    Description: Name given to launch template.
+    Type: String
+    Default: "shepard-launch-template"
+
+  ComputeEnvironmentType:
+    Description: Whether or not to use spot instances goes here. Allowed values are "Ec2" or "SPOT". Ec2 will use non-spot instances; SPOT will use spot instances.
+    Type: String
+    AllowedValues: ["Ec2","SPOT"]
+    Default: "Ec2"
+
+  ComputeEnvironmentName:
+    Description: A name for the batch compute environment.
+    Type: String
+    Default: "shepard-compute-envrionment"
+
+  QueueName:
+    Description: A name for the batch job queue.
+    Type: String
+    Default: "shepard-job-queue"
+
+  JobDefinitionName:
+    Description: A name for the batch job definition.
+    Type: String
+    Default: "shepard-job-definition"
+
+  Ec2KeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Ec2KeyPair to use for Compute Environment
+    Default: "the_best_key_ever"
+
+  DefaultCapacity:
+    Type: String
+    Description: How many VCPUs you want running constantly in your environment. This maps to batch's DesiredVCPUs. Basically if you want two of your instance type running constantly put 2*<number of vcpus of your instance type> here. For architectures where you don't want any instances running constantly this should be set to zero. This can be helpful in avoiding spin up times.
+    Default: "0"
+
+  UlimitsNoFilesOpen:
+    Type: String
+    Description: How many files the docker daemon will allow your container to open. Keep in mind this is max limit for all containers running on an instance. If you have 4 containers running on an instance (highly possible) they will share this limit then. Must be a positive non zero integer. Maximum is 1048576.
+    Default: "1048576"
+########################BATCH PARAMETERS END HERE########################
+
+########################TAGGING PARAMETERS START HERE########################
+  ProjectName:
+    Type: String
+    Description: Project Name
+    Default: "shepard-project"
+
+  TeamName:
+    Description: Default team name
+    Type: String
+    Default: "shepard-team"
+
+  ContactEmail:
+    Type: String
+    Description: Email address of the contact for this project
+    Default: "it@ginkgobioworks.com"
+
+  WorkloadValue:
+    Type: String
+    Description: The Workloadtype tag value
+    Default: "Dev"
+########################TAGGING PARAMETERS END HERE########################
+
+########################ECR PARAMETERS START HERE########################
+  ECRRepoName:
+    Type: String
+    Description: Name of the ECR repo to use with Shepard
+    Default: "shepard_container"
+########################ECR PARAMETERS END HERE########################
+
+########################EFS PARAMETERS START HERE########################
+  EFSName:
+    Type: String
+    Description: Name of EFS
+    Default: "shepard-efs-name"
+
+  EFSThroughput:
+    Type: String
+    Description: Throughput of EFS in MB/s. Must be an integer.
+    Default: "50"
+########################EFS PARAMETERS END HERE########################
+
+########################LUSTRE PARAMETERS START HERE########################
+  LustreName:
+    Type: String
+    Description: Name of Lustre file system.
+    Default: "shepard-lustre-name"
+
+  LustreBucketName:
+    Type: String
+    Description: Name of s3 bucket to used with lustre. Can be already in existance depending on the value supplied to the UseExistingBucketForLustre parameter.
+    Default: "shepard-lustre-bucket-name"
+
+  LustreStorageCapacity:
+    Type: String
+    Description: Capacity in GiB. Must be an integer. Valid values are 1.2 TiB, 2.4 TiB, and increments of 2.4 TiB.
+    Default: "1200"
+########################LUSTRE PARAMETERS END HERE########################
+
+########################EBS VOLUME PARAMETERS PARAMETERS START HERE########################
+  SizeOfRootDisk:
+    Type: String
+    Description: A number in GiB for the size of the root disk on each of your batch instances. Must be at least 30!
+    Default: "30"
+
+  SizeOfContainerStorageDisk:
+    Type: String
+    Description: A number in GiB for the size of the container storage disk on each of your batch instances. Must be at least 30!
+    Default: "30"
+########################EBS VOLUME PARAMETERS PARAMETERS END HERE########################
+
+########################SQS PARAMETERS START HERE########################
+  SQSName:
+    Type: String
+    Description: The name of the sqs queue that will hold your S3 events.
+    Default: "shepard-sqs-queue"
+########################SQS PARAMETERS END HERE########################
+
+########################LAMBDA PARAMETERS START HERE########################
+  LambdaMemorySize:
+    Type: String
+    Description: The amount of ram allocated to the scheduler lambda. Increasing the scheduler lambda's memory also increases its CPU allocation. The default value is 128 MB. The value must be a multiple of 64 MB. Minimum is 128 and maximum is 3008. If your customer will be using large input zips consider making this high.
+    Default: "128"
+
+  DaysToKeepFailedLaunchIndexes:
+    Type: String
+    Description: Days to keep failed launch indexes. If a job passes through the scheduler (i.e. it is properly formatted) but fails to launch (due to an error that is not a runtime error that occurs before the container actually runs) it's metadata will be kept in the scheduler for this time amount of time (in days). Must be a positive non zero integer.
+    Default: "30"
+########################LAMBDA PARAMETERS END HERE########################
+
+########################TOGGLE PARAMETERS START HERE########################
+  ToggleEFS:
+    Type: String
+    Description: True for on; False for off. Will determine whether or not an EFS gets created with the variables specified.
+    AllowedValues: ['True', 'False']
+    Default: 'True'
+
+  ToggleLustre:
+    Type: String
+    Description: True for on; False for off. Will determine whether or not a Lustre file system gets created with the variables specified.
+    AllowedValues: ['True', 'False']
+    Default: 'True'
+
+  ToggleVariableEBSVolumeSizes:
+    Type: String
+    Description: True for on; False for off. Will determine whether or not you are able to specify different sizes for EBS volumes that spin up with the batch instances. Resizing the EBS volume at xvdcz is how you are able to run arbitrarily large containers.
+    AllowedValues: ['True', 'False']
+    Default: 'True'
+
+  ToggleUseExistingBucketForLustre:
+    Type: String
+    Description: True for on; False for off. Will allow you to use an existing bucket for lustre if set to true. Otherwise it will create a new lustre bucket with the name specified.
+    AllowedValues: ['True', 'False']
+    Default: 'False'
+
+  ToggleAllowAccessToDockerDaemon:
+    Type: String
+    Description: True for on; False for off. Will pass the daemon as a volume mount to underlying payload containers if set to on. Should not be used for untrusted containerized workloads.
+    AllowedValues: ['True', 'False']
+    Default: 'False'
+
+  ToggleAllocationStrategy:
+    Type: String
+    Description: True for on; False for off. If you select a "SPOT" batch compute enviroment setting this toggle to True will select the "SPOT_CAPACITY_OPTIMIZED" allocation strategy. If you select a "ON DEMAND" (i.e. setting the "ComputeEnvironmentType" parameter in this cloudformation to "Ec2")  batch compute enviroment setting this toggle to True will select the "BEST_FIT_PROGRESSIVE" allocation strategy. Making this toggle False will make it so that all batch environments (On-Demand or Spot) will be spun up with the "BEST_FIT" allocation strategy. You can read more about different allocation strategies here (https://docs.aws.amazon.com/batch/latest/userguide/allocation-strategies.html) but the short of it is I'd recommend leaving this set to True unless you're very concerned about keeping costs down and are willing to sacrifice better scaling in favor of lower costs.
+    AllowedValues: ['True', 'False']
+    Default: 'True'
+########################TOGGLE PARAMETERS END HERE########################
+
+########################NETWORK PARAMETERS START HERE########################
+  EnvironmentName:
+    Description: An environment name that is prefixed to network resource names
+    Type: String
+    Default: 'Shepard-environment'
+
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.192.0.0/16
+
+  PublicSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+    Type: String
+    Default: 10.192.10.0/24
+
+  PublicSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+    Type: String
+    Default: 10.192.11.0/24
+
+  PrivateSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+    Type: String
+    Default: 10.192.20.0/24
+
+  PrivateSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+    Type: String
+    Default: 10.192.21.0/24
+
+  CIDRToAllowSSHAccessTo:
+    Description: Please enter the IP range (CIDR notation) you would like to grant the ability to SSH into EC2 instances provisioned by Batch.
+    Type: String
+    Default: 1.1.1.1/32
+
+  AllowSSHAccessToCIDRToAllowSSHAccessTo:
+    Type: String
+    Description: True for on; False for off. True will make it so that the CIDR specified designated in CIDRToAllowSSHAccessTo is granted SSH access to instances. False will cause this CIDR block to be ignored.
+    AllowedValues: ['True', 'False']
+    Default: 'False'
+
+  MakeSubnetsPublic:
+    Type: String
+    Description: True for on; False for off. True will make jobs run in public subnets and False will make jobs run in private subnets.
+    AllowedValues: ['True', 'False']
+    Default: 'False'
+########################NETWORK PARAMETERS END HERE########################
+
+########################EXTRA IAM POLICY PARAMETERS START HERE########################
+  ToggleIncludeExtraIAMPolicyForContainerRole:
+    Type: String
+    Description: If True will attach the IAM policy ARN referred to in "ExtraIAMPolicyForContainerRole" to the container role for jobs associated with this architecture. This toggle can be used to grant extra permissions to a Shepard architecture's jobs (i.e. its containers) beyond those that are normally granted. This allows you to specify your own IAM policy and apply it.
+    AllowedValues: ['True', 'False']
+    Default: 'False'
+  ExtraIAMPolicyForContainerRole:
+    Type: String
+    Description: Extra IAM policy that will be attached if "ToggleIncludeExtraIAMPolicyForContainerRole" is set to True. Can be ignored if "ToggleIncludeExtraIAMPolicyForContainerRole" is set to False.
+    Default: "arn-of-extra-policy-goes-here"
+########################EXTRA IAM POLICY PARAMETERS END HERE########################
+
+########################CONDITION EVALUATION STARTS HERE########################
+Conditions:
+  WantsNewBucketForLustre:
+    Fn::And:
+      - Fn::Equals:
+          - 'False'
+          - Ref: ToggleUseExistingBucketForLustre
+      - Fn::Equals:
+          - 'True'
+          - Ref: ToggleLustre
+
+  WantsEFS:
+    Fn::Equals:
+      - 'True'
+      - Ref: ToggleEFS
+
+  WantsLustre:
+    Fn::Equals:
+      - 'True'
+      - Ref: ToggleLustre
+
+  WantsVariableSizedEBSVolumes:
+    Fn::Equals:
+      - 'True'
+      - Ref: ToggleVariableEBSVolumeSizes
+
+  DoesNotWantVariableSizedEBSVolumes:
+    Fn::Equals:
+      - 'False'
+      - Ref: ToggleVariableEBSVolumeSizes
+
+  WantsEFSandLustre:
+    Fn::And:
+      - Fn::Equals:
+        - 'True'
+        - Ref: ToggleEFS
+      - Fn::Equals:
+        - 'True'
+        - Ref: ToggleLustre
+
+  WantsEFSandNoLustre:
+    Fn::And:
+      - Fn::Equals:
+        - 'True'
+        - Ref: ToggleEFS
+      - Fn::Equals:
+        - 'False'
+        - Ref: ToggleLustre
+
+  WantsNoEFSandLustre:
+    Fn::And:
+      - Fn::Equals:
+        - 'False'
+        - Ref: ToggleEFS
+      - Fn::Equals:
+        - 'True'
+        - Ref: ToggleLustre
+
+  WantsEFSOrLustre:
+    Fn::Or:
+      - Fn::Equals:
+        - 'True'
+        - Ref: ToggleEFS
+      - Fn::Equals:
+        - 'True'
+        - Ref: ToggleLustre
+
+  WantsPublicSubnets:
+    Fn::Equals:
+      - 'True'
+      - Ref: MakeSubnetsPublic
+
+  WantsToAddSSHAccess:
+    Fn::Equals:
+      - 'True'
+      - Ref: AllowSSHAccessToCIDRToAllowSSHAccessTo
+
+  WantsOnDemand:
+    Fn::Equals:
+      - 'Ec2'
+      - Ref: ComputeEnvironmentType
+
+  WantsBestFitAsAllocationStrategy:
+    Fn::Equals:
+      - 'False'
+      - Ref: ToggleAllocationStrategy
+
+  WantsExtraPolicyForContainerRole:
+    Fn::Equals:
+      - 'True'
+      - Ref: ToggleIncludeExtraIAMPolicyForContainerRole
+########################CONDITION EVALUATION ENDS HERE########################
+
+Resources:
+########################CREATION OF NETWORKING RESOURCES STARTS HERE########################
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs  '' ]
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Subnet (AZ2)
+
+  NatGateway1EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway2EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway2EIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Routes
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Routes (AZ1)
+
+  DefaultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Routes (AZ2)
+
+  DefaultPrivateRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+
+  NoIngressSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "no-ingress-sg"
+      GroupDescription: "Security group with no ingress rule"
+      VpcId: !Ref VPC
+########################CREATION OF NETWORKING RESOURCES ENDS HERE########################
+
+
+########################CREATION OF S3 BUCKETS FOR Shepard STARTS HERE########################
+  #Create an input bucket for entry to our architecture
+  ShepardInputsBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: SQSShepardQueuePolicy
+    Properties:
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !GetAtt SQSShepardReceiveQueue.Arn
+      VersioningConfiguration:
+        Status: Enabled
+      BucketName:
+        Fn::Sub:
+          "${InputsBucket}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: InfrequentAccessRule
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+      Tags:
+        - Key: Team
+          Value: !Ref TeamName
+        - Key: Contact
+          Value: !Ref ContactEmail
+        - Key: Workloadtype
+          Value: !Ref WorkloadValue
+        - Key: Project
+          Value: !Ref ProjectName
+  InputsBucketAllowAccessToLambda:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: "ShepardInputsBucket"
+      PolicyDocument:
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action:
+              - "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${InputsBucket}"
+              - !Sub "arn:aws:s3:::${InputsBucket}/*"
+            Condition:
+              StringLike:
+                aws:Referer: !Ref "AWS::AccountId"
+
+  #Create an output bucket for stuff to go in to
+  ShepardOutputsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      BucketName:
+        Fn::Sub:
+          "${OutputsBucket}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: InfrequentAccessRule
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+      Tags:
+        - Key: Team
+          Value: !Ref TeamName
+        - Key: Contact
+          Value: !Ref ContactEmail
+        - Key: Workloadtype
+          Value: !Ref WorkloadValue
+        - Key: Project
+          Value: !Ref ProjectName
+  OutputsBucketAllowAccessToLambda:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Fn::Sub:
+          "${OutputsBucket}"
+      PolicyDocument:
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action:
+              - "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${OutputsBucket}"
+              - !Sub "arn:aws:s3:::${OutputsBucket}/*"
+            Condition:
+              StringLike:
+                aws:Referer: !Ref "AWS::AccountId"
+
+  #Creation of an error bucket for stuff to go into in the event something blows up
+  ShepardQuickDeployBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      BucketName:
+        Fn::Sub:
+          "${QuickDeployBucket}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: InfrequentAccessRule
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+      Tags:
+        - Key: Team
+          Value: !Ref TeamName
+        - Key: Contact
+          Value: !Ref ContactEmail
+        - Key: Workloadtype
+          Value: !Ref WorkloadValue
+        - Key: Project
+          Value: !Ref ProjectName
+  QuickDeployBucketAllowAccessToLambda:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Fn::Sub:
+          "${QuickDeployBucket}"
+      PolicyDocument:
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action:
+              - "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${QuickDeployBucket}"
+              - !Sub "arn:aws:s3:::${QuickDeployBucket}/*"
+            Condition:
+              StringLike:
+                aws:Referer: !Ref "AWS::AccountId"
+########################CREATION OF S3 BUCKETS FOR Shepard ENDS HERE########################
+
+########################CREATION OF SQS SETUP STARTS HERE########################
+  #this is our DLQ for our receive SQS queue
+  SQSShepardReceiveQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600 #14 days in seconds which is as long as possible
+      VisibilityTimeout: 0 #Set visability to be as low as possible so we kill messages as soon as possible.
+
+  #this queue will receive messages from our input s3 bucket
+  SQSShepardReceiveQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref SQSName
+      MessageRetentionPeriod: 1209600 #14 days in seconds which is as long as possible
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+            - "SQSShepardReceiveQueueDLQ"
+            - "Arn"
+        maxReceiveCount: 1
+      VisibilityTimeout: 43200 #Set visability to 12 hours for maximum queueing possible.
+
+  #this policy allows SQS to receive messages from S3
+  SQSShepardQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Id: MyQueuePolicy
+        Statement:
+          - Sid: Allow-S3-Send-Message-From-Input-Bucket
+            Effect: Allow
+            Principal: "*"
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt SQSShepardReceiveQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Sub "arn:aws:s3:::${InputsBucket}"
+      Queues:
+        - !Ref SQSShepardReceiveQueue
+
+  #this SQS event source mapping allows SQS to trigger off lambda invocations. this is nice cause there's a lot of autoscaling. the batchsize is 1 because it allows for easier code and because we get faster turn around time this way.
+  SQSEventTriggerNormalReceive:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      BatchSize: 1
+      Enabled: true
+      EventSourceArn: !GetAtt SQSShepardReceiveQueue.Arn
+      FunctionName: !GetAtt ShepardSchedulerFunction.Arn
+########################CREATION OF SQS SETUP ENDS HERE########################
+
+########################CREATION OF SECRET MANAGER SECRETS STORE SETUP STARTS HERE########################
+  ShepardSecretManagerStore:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: !Ref SecretsManagerName
+      SecretString: '{"instructions.txt":"SGVsbG8hCgpUaGlzIGlzIGFuIGV4YW1wbGUgb2YgYSB0ZXh0IGZpbGUgZW5jb2RlZCBpbiBiYXNlNjQuCgpQbGVhc2UgZG8gbm90IHdpcGUgb3V0IGFsbCBvZiB0aGUgZmllbGRzIGluIHRoZSBzZWNyZXRzIHN0b3JlIGFzIHRoaXMgd2lsbCBjYXVzZSBhbiBlcnJvci4KCklmIHlvdSBkb24ndCB3YW50IHRvIHVzZSBzZWNyZXRzIG1hbmFnZXIgdG8gc3RvcmUgYXV0aCBmaWxlcyB0aGVuIGZlZWwgZnJlZSB0byBsZWF2ZSB0aGlzIG9yIGFub3RoZXIgcGxhY2Vob2xkZXIgYmFzZTY0IGVuY29kZWQgZmlsZSBoZXJlIGluIGl0cyBwbGFjZS4KCkkgcmVhbGx5IGhvcGUgdGhpcyBhcmNoaXRlY3R1cmUgaXMgdXNlZnVsIGZvciB5b3UgYW5kIHRoYXQgeW91IGdldCBhIGxvdCBvdXQgb2YgaXQuIEEgbG90IG9mIHdvcmsgd2VudCBpbnRvIHRoaXMuCgpJZiB5b3UgaGF2ZSBhbnkgcXVlc3Rpb24gZmVlbCBmcmVlIHRvIHJlYWNoIG91dCBhdCBhbnl0aW1lLgoKQWxsIHRoZSBCZXN0LApKYWNvYiBNZXZvcmFjaAoKUC5TLjogSW4gY2FzZSB5b3UncmUgZnJvbSB0aGUgZnV0dXJlOyBoZWxsbyBmdXR1cmUhIFRoZSB5ZWFyIGlzIDIwMjAsIHRoZSBtb250aCBpcyBBcHJpbCBhbmQgd2UncmUgYWxsIHN0dWNrIGF0IGhvbWUgYmVjYXVzZSBvZiB0aGUgQ29yb25hdmlydXMuCg=="}'
+########################CREATION OF SECRET MANAGER SECRETS STORE SETUP ENDS HERE########################
+
+########################CREATION OF ECR SETUP STARTS HERE########################
+  ShepardECRRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref ECRRepoName
+########################CREATION OF ECR SETUP ENDS HERE########################
+
+########################CREATION OF BATCH SETUP STARTS HERE########################
+  BatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: batch.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole
+
+  IamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+      - Ref: EcsInstanceRole
+
+  EcsInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2008-10-17'
+        Statement:
+        - Sid: ''
+          Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+
+  BatchSpotFleetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: spotfleet.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole
+
+  BatchSecGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      Fn::If:
+        - WantsToAddSSHAccess
+        - GroupDescription: BatchGroup
+          SecurityGroupEgress:
+            - CidrIp: 0.0.0.0/0
+              IpProtocol: '-1'
+          SecurityGroupIngress:
+            - CidrIp: !Ref CIDRToAllowSSHAccessTo
+              IpProtocol: tcp
+              FromPort: '22'
+              ToPort: '22'
+            - CidrIp: !Ref VpcCIDR
+              IpProtocol: tcp
+              FromPort: '22'
+              ToPort: '22'
+            - CidrIp: !Ref VpcCIDR
+              IpProtocol: tcp
+              FromPort: '988'
+              ToPort: '988'
+            - CidrIp: !Ref VpcCIDR
+              IpProtocol: tcp
+              FromPort: '1021'
+              ToPort: '1023'
+          VpcId: !Ref VPC
+        - GroupDescription: BatchGroup
+          SecurityGroupEgress:
+            - CidrIp: 0.0.0.0/0
+              IpProtocol: '-1'
+          SecurityGroupIngress:
+            - CidrIp: !Ref VpcCIDR
+              IpProtocol: tcp
+              FromPort: '22'
+              ToPort: '22'
+            - CidrIp: !Ref VpcCIDR
+              IpProtocol: tcp
+              FromPort: '988'
+              ToPort: '988'
+            - CidrIp: !Ref VpcCIDR
+              IpProtocol: tcp
+              FromPort: '1021'
+              ToPort: '1023'
+          VpcId: !Ref VPC
+
+  BatchCompute:
+    Type: "AWS::Batch::ComputeEnvironment"
+    Properties:
+      Type: Managed
+      ServiceRole: !Ref BatchServiceRole
+      ComputeEnvironmentName: !Ref ComputeEnvironmentName
+      ComputeResources:
+        AllocationStrategy : !If [WantsBestFitAsAllocationStrategy, 'BEST_FIT', !If [WantsOnDemand, 'BEST_FIT_PROGRESSIVE', 'SPOT_CAPACITY_OPTIMIZED']]
+        MaxvCpus : !Ref MaxCPU
+        InstanceTypes: !Ref InstanceTypes
+        LaunchTemplate:
+          LaunchTemplateId: !If [WantsVariableSizedEBSVolumes, !Ref ShepardLaunchTemplate, !Ref ShepardLaunchTemplateNoDeviceMappings]
+        SecurityGroupIds:
+          - !Ref BatchSecGroup
+        SpotIamFleetRole: !Ref BatchSpotFleetRole
+        Subnets:
+          - !If [WantsPublicSubnets, !Ref PublicSubnet1, !Ref PrivateSubnet1]
+          - !If [WantsPublicSubnets, !Ref PublicSubnet2, !Ref PrivateSubnet2]
+        Type: !Ref ComputeEnvironmentType
+        MinvCpus: 0
+        InstanceRole: !Ref IamInstanceProfile
+        Ec2KeyPair: !Ref Ec2KeyPair
+        Tags: { "Name": !Ref BatchInstanceNames, "Project": !Ref ProjectName, "Team": !Ref TeamName, "Contact": !Ref ContactEmail, "Workloadtype": !Ref WorkloadValue }
+        DesiredvCpus: !Ref DefaultCapacity
+      State: ENABLED
+
+  #here's where the role for our lambda function gets made.
+  ContainerRuntimeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+                - batch.amazonaws.com
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: ShepardRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        - PolicyName: AllowAccessToSecretsStore
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:*
+                Resource: !Ref ShepardSecretManagerStore
+        - PolicyName: AllowS3ToInputsBucket
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: !Sub 'arn:aws:s3:::${InputsBucket}'
+        - PolicyName: AllowS3ToInputsBucketContents
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: !Sub 'arn:aws:s3:::${InputsBucket}/*'
+        - PolicyName: AllowS3ToQuickDeployBucket
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: !Sub 'arn:aws:s3:::${QuickDeployBucket}'
+        - PolicyName: AllowS3ToQuickDeployBucketContents
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: !Sub 'arn:aws:s3:::${QuickDeployBucket}/*'
+        - PolicyName: AllowS3ToOutputsBucket
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: !Sub 'arn:aws:s3:::${OutputsBucket}'
+        - PolicyName: AllowS3ToOutputsBucketContents
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: !Sub 'arn:aws:s3:::${OutputsBucket}/*'
+        - PolicyName: AllowDynamoDB
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:*
+                Resource: !GetAtt ShepardDynamoDB.Arn
+      ManagedPolicyArns: !If [WantsExtraPolicyForContainerRole, [!Ref ExtraIAMPolicyForContainerRole], [!Ref "AWS::NoValue"]]
+
+  BatchJobDefinition:
+    Type: "AWS::Batch::JobDefinition"
+    Properties:
+      ContainerProperties:
+        Ulimits:
+          - HardLimit: !Ref UlimitsNoFilesOpen
+            Name: "nofile"
+            SoftLimit: !Ref UlimitsNoFilesOpen
+        Environment:
+        - Name: role_arn
+          Value: !GetAtt ContainerRuntimeRole.Arn
+        - Name: role_session_name
+          Value: "access_session"
+        - Name: SECRET_STORE
+          Value: !Ref ShepardSecretManagerStore
+        - Name: USES_EFS
+          Value: !Ref ToggleEFS
+        - Name: USES_LUSTRE
+          Value: !Ref ToggleLustre
+        - Name: region
+          Value: !Ref 'AWS::Region'
+        - Name: outputs_bucket
+          Value: !Ref OutputsBucket
+        - Name: quick_deploy_bucket
+          Value: !Ref QuickDeployBucket
+        - Name: inputs_bucket
+          Value: !Ref InputsBucket
+        - Name: table_name
+          Value: !Ref ShepardDynamoDB
+        - Name: ULIMIT_FILENO
+          Value: !Ref UlimitsNoFilesOpen
+        - Name: ALLOW_DOCKER_ACCESS
+          Value: !Ref ToggleAllowAccessToDockerDaemon
+        Image: !Join [ "", [ !Ref 'AWS::AccountId', '.dkr.ecr.', !Ref 'AWS::Region', '.amazonaws.com/',!Ref ECRRepoName,':latest'] ]
+        JobRoleArn: !GetAtt ContainerRuntimeRole.Arn
+        Memory: !Ref DesiredRam
+        Vcpus: !Ref DesiredCPU
+        MountPoints:
+          - ContainerPath: "/mnt/root"
+            ReadOnly: false
+            SourceVolume: "root"
+          - ContainerPath: "/mnt/fsx"
+            ReadOnly: false
+            SourceVolume: "fsx"
+          - ContainerPath: "/mnt/efs"
+            ReadOnly: false
+            SourceVolume: "efs"
+          - ContainerPath: "/var/run/docker.sock"
+            ReadOnly: false
+            SourceVolume: "docker"
+        Privileged: True
+        Volumes:
+          - Host:
+             SourcePath: "/mnt/root"
+            Name: "root"
+          - Host:
+             SourcePath: "/mnt/fsx"
+            Name: "fsx"
+          - Host:
+             SourcePath: "/mnt/efs"
+            Name: "efs"
+          - Host:
+              SourcePath: "/var/run/docker.sock"
+            Name: "docker"
+      JobDefinitionName: !Ref JobDefinitionName
+      Type: container
+
+  ShepardJobQueue:
+    Type: "AWS::Batch::JobQueue"
+    Properties:
+      ComputeEnvironmentOrder:
+        - ComputeEnvironment: !Ref BatchCompute
+          Order: 1
+      Priority: 1000
+      State: "ENABLED"
+      JobQueueName: !Ref QueueName
+
+  ShepardLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Condition: WantsVariableSizedEBSVolumes
+    Properties:
+      LaunchTemplateName: !Ref LaunchTemplateName
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              DeleteOnTermination: true
+              Encrypted: true
+              VolumeSize: !Ref SizeOfRootDisk
+              VolumeType: gp2
+          - DeviceName: /dev/xvdcz
+            Ebs:
+              DeleteOnTermination: true
+              Encrypted: true
+              VolumeSize: !Ref SizeOfContainerStorageDisk
+              VolumeType: gp2
+        UserData:
+          Fn::Base64:
+            Fn::If:
+              - WantsEFSOrLustre
+              - Fn::If:
+                  - WantsEFSandLustre
+                  - Fn::Sub:
+                      - |
+                        MIME-Version: 1.0
+                        Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+                        --==MYBOUNDARY==
+                        Content-Type: text/cloud-config; charset="us-ascii"
+
+                        packages:
+                        - amazon-efs-utils
+                        - lustre-client
+                        - amazon-ssm-agent
+
+                        runcmd:
+                        - mkdir -p /mnt/root
+                        - mkdir -p ${efs_directory}
+                        - echo "${efs_file_system_id}:/ ${efs_directory} efs tls,_netdev" >> /etc/fstab
+                        - mount -a -t efs defaults
+                        - mkdir -p ${lustre_directory}
+                        - echo "${lustre_file_system_id}.fsx.${region}.amazonaws.com@tcp:/${lustre_mount_name} ${lustre_directory} lustre defaults,noatime,_netdev 0 0" >> /etc/fstab
+                        - mount -a -t lustre defaults
+                        - echo "* soft sigpending -1" >> /etc/security/limits.conf
+                        - echo "* hard sigpending -1" >> /etc/security/limits.conf
+                        - echo "* soft memlock -1" >> /etc/security/limits.conf
+                        - echo "* hard memlock -1" >> /etc/security/limits.conf
+                        - echo "* soft msgqueue -1" >> /etc/security/limits.conf
+                        - echo "* hard msgqueue -1" >> /etc/security/limits.conf
+                        - echo "* soft nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                        - echo "* hard nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                        - sed -i 's/OPTIONS="--default-ulimit nofile=1024:4096"/OPTIONS="--default-ulimit nofile=${ulimit_nofile}:${ulimit_nofile}"/g' /etc/sysconfig/docker
+                        --==MYBOUNDARY==--
+
+                        MIME-Version: 1.0
+                        Content-Type: text/cloud-boothook; charset="us-ascii"
+                        Content-Transfer-Encoding: 7bit
+                        Content-Disposition: attachment; filename="boothook.txt"
+
+                        #cloud-boothook
+                        echo 'OPTIONS="$''{OPTIONS} --storage-opt dm.basesize=${SizeOfContainerStorageDisk}G"' >> /etc/sysconfig/docker
+
+                        --==MYBOUNDARY==--
+                      - {efs_file_system_id: !Ref ProjectEFSSystem, efs_directory: "/mnt/efs", SizeOfContainerStorageDisk: !Ref SizeOfContainerStorageDisk , lustre_file_system_id: !Ref ProjectLustreSystem, lustre_mount_name: !GetAtt ProjectLustreSystem.LustreMountName, lustre_directory: "/mnt/fsx", region: !Ref 'AWS::Region', ulimit_nofile: !Ref UlimitsNoFilesOpen}
+                  - Fn::If:
+                      - WantsEFSandNoLustre
+                      - Fn::Sub:
+                          - |
+                            MIME-Version: 1.0
+                            Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+                            --==MYBOUNDARY==
+                            Content-Type: text/cloud-config; charset="us-ascii"
+
+                            packages:
+                            - amazon-efs-utils
+
+
+                            runcmd:
+                            - mkdir -p /mnt/root
+                            - mkdir -p ${efs_directory}
+                            - echo "${efs_file_system_id}:/ ${efs_directory} efs tls,_netdev" >> /etc/fstab
+                            - mount -a -t efs defaults
+                            - mkdir -p ${lustre_directory}
+                            - echo "* soft sigpending -1" >> /etc/security/limits.conf
+                            - echo "* hard sigpending -1" >> /etc/security/limits.conf
+                            - echo "* soft memlock -1" >> /etc/security/limits.conf
+                            - echo "* hard memlock -1" >> /etc/security/limits.conf
+                            - echo "* soft msgqueue -1" >> /etc/security/limits.conf
+                            - echo "* hard msgqueue -1" >> /etc/security/limits.conf
+                            - echo "* soft nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                            - echo "* hard nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                            - sed -i 's/OPTIONS="--default-ulimit nofile=1024:4096"/OPTIONS="--default-ulimit nofile=${ulimit_nofile}:${ulimit_nofile}"/g' /etc/sysconfig/docker
+                            --==MYBOUNDARY==--
+
+                            MIME-Version: 1.0
+                            Content-Type: text/cloud-boothook; charset="us-ascii"
+                            Content-Transfer-Encoding: 7bit
+                            Content-Disposition: attachment; filename="boothook.txt"
+
+                            #cloud-boothook
+                            echo 'OPTIONS="$''{OPTIONS} --storage-opt dm.basesize=${SizeOfContainerStorageDisk}G"' >> /etc/sysconfig/docker
+
+                            --==MYBOUNDARY==--
+                          - {efs_file_system_id: !Ref ProjectEFSSystem, efs_directory: "/mnt/efs", SizeOfContainerStorageDisk: !Ref SizeOfContainerStorageDisk, lustre_directory: "/mnt/fsx", ulimit_nofile: !Ref UlimitsNoFilesOpen}
+                      - Fn::Sub:
+                          - |
+                            MIME-Version: 1.0
+                            Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+                            --==MYBOUNDARY==
+                            Content-Type: text/cloud-config; charset="us-ascii"
+
+                            packages:
+                            - amazon-efs-utils
+                            - lustre-client
+                            - amazon-ssm-agent
+
+                            runcmd:
+                            - mkdir -p /mnt/root
+                            - mkdir -p ${efs_directory}
+                            - mkdir -p ${lustre_directory}
+                            - echo "${lustre_file_system_id}.fsx.${region}.amazonaws.com@tcp:/${lustre_mount_name} ${lustre_directory} lustre defaults,noatime,_netdev 0 0" >> /etc/fstab
+                            - mount -a -t lustre defaults
+                            - echo "* soft sigpending -1" >> /etc/security/limits.conf
+                            - echo "* hard sigpending -1" >> /etc/security/limits.conf
+                            - echo "* soft memlock -1" >> /etc/security/limits.conf
+                            - echo "* hard memlock -1" >> /etc/security/limits.conf
+                            - echo "* soft msgqueue -1" >> /etc/security/limits.conf
+                            - echo "* hard msgqueue -1" >> /etc/security/limits.conf
+                            - echo "* soft nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                            - echo "* hard nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                            - sed -i 's/OPTIONS="--default-ulimit nofile=1024:4096"/OPTIONS="--default-ulimit nofile=${ulimit_nofile}:${ulimit_nofile}"/g' /etc/sysconfig/docker
+                            --==MYBOUNDARY==--
+
+                            MIME-Version: 1.0
+                            Content-Type: text/cloud-boothook; charset="us-ascii"
+                            Content-Transfer-Encoding: 7bit
+                            Content-Disposition: attachment; filename="boothook.txt"
+
+                            #cloud-boothook
+                            echo 'OPTIONS="$''{OPTIONS} --storage-opt dm.basesize=${SizeOfContainerStorageDisk}G"' >> /etc/sysconfig/docker
+
+                            --==MYBOUNDARY==--
+                          - {efs_directory: "/mnt/efs", SizeOfContainerStorageDisk: !Ref SizeOfContainerStorageDisk , lustre_file_system_id: !Ref ProjectLustreSystem, lustre_mount_name: !GetAtt ProjectLustreSystem.LustreMountName, lustre_directory: "/mnt/fsx", region: !Ref 'AWS::Region', ulimit_nofile: !Ref UlimitsNoFilesOpen}
+              - Fn::Sub:
+                  - |
+                    MIME-Version: 1.0
+                    Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+                    --==MYBOUNDARY==
+                    Content-Type: text/cloud-config; charset="us-ascii"
+
+                    packages:
+                    - amazon-efs-utils
+
+                    runcmd:
+                    - mkdir -p /mnt/root
+                    - mkdir -p ${efs_directory}
+                    - mkdir -p ${lustre_directory}
+                    - echo "* soft sigpending -1" >> /etc/security/limits.conf
+                    - echo "* hard sigpending -1" >> /etc/security/limits.conf
+                    - echo "* soft memlock -1" >> /etc/security/limits.conf
+                    - echo "* hard memlock -1" >> /etc/security/limits.conf
+                    - echo "* soft msgqueue -1" >> /etc/security/limits.conf
+                    - echo "* hard msgqueue -1" >> /etc/security/limits.conf
+                    - echo "* soft nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                    - echo "* hard nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                    - sed -i 's/OPTIONS="--default-ulimit nofile=1024:4096"/OPTIONS="--default-ulimit nofile=${ulimit_nofile}:${ulimit_nofile}"/g' /etc/sysconfig/docker
+                    --==MYBOUNDARY==--
+
+                    MIME-Version: 1.0
+                    Content-Type: text/cloud-boothook; charset="us-ascii"
+                    Content-Transfer-Encoding: 7bit
+                    Content-Disposition: attachment; filename="boothook.txt"
+
+                    #cloud-boothook
+                    echo 'OPTIONS="$''{OPTIONS} --storage-opt dm.basesize=${SizeOfContainerStorageDisk}G"' >> /etc/sysconfig/docker
+
+                    --==MYBOUNDARY==--
+                  - {efs_directory: "/mnt/efs", lustre_directory: "/mnt/fsx", SizeOfContainerStorageDisk: !Ref SizeOfContainerStorageDisk, ulimit_nofile: !Ref UlimitsNoFilesOpen}
+
+  ShepardLaunchTemplateNoDeviceMappings:
+    Type: AWS::EC2::LaunchTemplate
+    Condition: DoesNotWantVariableSizedEBSVolumes
+    Properties:
+      LaunchTemplateName: !Ref LaunchTemplateName
+      LaunchTemplateData:
+        UserData:
+          Fn::Base64:
+            Fn::If:
+              - WantsEFSOrLustre
+              - Fn::If:
+                  - WantsEFSandLustre
+                  - Fn::Sub:
+                      - |
+                        MIME-Version: 1.0
+                        Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+                        --==MYBOUNDARY==
+                        Content-Type: text/cloud-config; charset="us-ascii"
+
+                        packages:
+                        - amazon-efs-utils
+                        - lustre-client
+                        - amazon-ssm-agent
+
+                        runcmd:
+                        - mkdir -p /mnt/root
+                        - mkdir -p ${efs_directory}
+                        - echo "${efs_file_system_id}:/ ${efs_directory} efs tls,_netdev" >> /etc/fstab
+                        - mount -a -t efs defaults
+                        - mkdir -p ${lustre_directory}
+                        - echo "${lustre_file_system_id}.fsx.${region}.amazonaws.com@tcp:/${lustre_mount_name} ${lustre_directory} lustre defaults,noatime,_netdev 0 0" >> /etc/fstab
+                        - mount -a -t lustre defaults
+                        - echo "* soft sigpending -1" >> /etc/security/limits.conf
+                        - echo "* hard sigpending -1" >> /etc/security/limits.conf
+                        - echo "* soft memlock -1" >> /etc/security/limits.conf
+                        - echo "* hard memlock -1" >> /etc/security/limits.conf
+                        - echo "* soft msgqueue -1" >> /etc/security/limits.conf
+                        - echo "* hard msgqueue -1" >> /etc/security/limits.conf
+                        - echo "* soft nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                        - echo "* hard nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                        - sed -i 's/OPTIONS="--default-ulimit nofile=1024:4096"/OPTIONS="--default-ulimit nofile=${ulimit_nofile}:${ulimit_nofile}"/g' /etc/sysconfig/docker
+                        --==MYBOUNDARY==--
+                      - {efs_file_system_id: !Ref ProjectEFSSystem, efs_directory: "/mnt/efs", lustre_file_system_id: !Ref ProjectLustreSystem, lustre_mount_name: !GetAtt ProjectLustreSystem.LustreMountName, lustre_directory: "/mnt/fsx", region: !Ref 'AWS::Region', ulimit_nofile: !Ref UlimitsNoFilesOpen}
+                  - Fn::If:
+                      - WantsEFSandNoLustre
+                      - Fn::Sub:
+                          - |
+                            MIME-Version: 1.0
+                            Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+                            --==MYBOUNDARY==
+                            Content-Type: text/cloud-config; charset="us-ascii"
+
+                            packages:
+                            - amazon-efs-utils
+
+                            runcmd:
+                            - mkdir -p /mnt/root
+                            - mkdir -p ${efs_directory}
+                            - echo "${efs_file_system_id}:/ ${efs_directory} efs tls,_netdev" >> /etc/fstab
+                            - mount -a -t efs defaults
+                            - mkdir -p ${lustre_directory}
+                            - echo "* soft sigpending -1" >> /etc/security/limits.conf
+                            - echo "* hard sigpending -1" >> /etc/security/limits.conf
+                            - echo "* soft memlock -1" >> /etc/security/limits.conf
+                            - echo "* hard memlock -1" >> /etc/security/limits.conf
+                            - echo "* soft msgqueue -1" >> /etc/security/limits.conf
+                            - echo "* hard msgqueue -1" >> /etc/security/limits.conf
+                            - echo "* soft nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                            - echo "* hard nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                            - sed -i 's/OPTIONS="--default-ulimit nofile=1024:4096"/OPTIONS="--default-ulimit nofile=${ulimit_nofile}:${ulimit_nofile}"/g' /etc/sysconfig/docker
+                            --==MYBOUNDARY==--
+                          - {efs_file_system_id: !Ref ProjectEFSSystem, efs_directory: "/mnt/efs", lustre_directory: "/mnt/fsx", ulimit_nofile: !Ref UlimitsNoFilesOpen}
+                      - Fn::Sub:
+                          - |
+                            MIME-Version: 1.0
+                            Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+                            --==MYBOUNDARY==
+                            Content-Type: text/cloud-config; charset="us-ascii"
+
+                            packages:
+                            - amazon-efs-utils
+                            - lustre-client
+                            - amazon-ssm-agent
+
+                            runcmd:
+                            - mkdir -p /mnt/root
+                            - mkdir -p ${efs_directory}
+                            - mkdir -p ${lustre_directory}
+                            - echo "${lustre_file_system_id}.fsx.${region}.amazonaws.com@tcp:/${lustre_mount_name} ${lustre_directory} lustre defaults,noatime,_netdev 0 0" >> /etc/fstab
+                            - mount -a -t lustre defaults
+                            - echo "* soft sigpending -1" >> /etc/security/limits.conf
+                            - echo "* hard sigpending -1" >> /etc/security/limits.conf
+                            - echo "* soft memlock -1" >> /etc/security/limits.conf
+                            - echo "* hard memlock -1" >> /etc/security/limits.conf
+                            - echo "* soft msgqueue -1" >> /etc/security/limits.conf
+                            - echo "* hard msgqueue -1" >> /etc/security/limits.conf
+                            - echo "* soft nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                            - echo "* hard nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                            - sed -i 's/OPTIONS="--default-ulimit nofile=1024:4096"/OPTIONS="--default-ulimit nofile=${ulimit_nofile}:${ulimit_nofile}"/g' /etc/sysconfig/docker
+                            --==MYBOUNDARY==--
+                          - {efs_directory: "/mnt/efs", lustre_file_system_id: !Ref ProjectLustreSystem, lustre_mount_name: !GetAtt ProjectLustreSystem.LustreMountName, lustre_directory: "/mnt/fsx", region: !Ref 'AWS::Region', ulimit_nofile: !Ref UlimitsNoFilesOpen}
+              - Fn::Sub:
+                  - |
+                    MIME-Version: 1.0
+                    Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+                    --==MYBOUNDARY==
+                    Content-Type: text/cloud-config; charset="us-ascii"
+
+                    packages:
+                    - amazon-efs-utils
+
+                    runcmd:
+                    - mkdir -p /mnt/root
+                    - mkdir -p ${efs_directory}
+                    - mkdir -p ${lustre_directory}
+                    - echo "* soft sigpending -1" >> /etc/security/limits.conf
+                    - echo "* hard sigpending -1" >> /etc/security/limits.conf
+                    - echo "* soft memlock -1" >> /etc/security/limits.conf
+                    - echo "* hard memlock -1" >> /etc/security/limits.conf
+                    - echo "* soft msgqueue -1" >> /etc/security/limits.conf
+                    - echo "* hard msgqueue -1" >> /etc/security/limits.conf
+                    - echo "* soft nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                    - echo "* hard nofile ${ulimit_nofile}" >> /etc/security/limits.conf
+                    - sed -i 's/OPTIONS="--default-ulimit nofile=1024:4096"/OPTIONS="--default-ulimit nofile=${ulimit_nofile}:${ulimit_nofile}"/g' /etc/sysconfig/docker
+                    --==MYBOUNDARY==--
+                  - {efs_directory: "/mnt/efs", lustre_directory: "/mnt/fsx", ulimit_nofile: !Ref UlimitsNoFilesOpen}
+########################CREATION OF BATCH SETUP ENDS HERE########################
+
+########################CREATION OF EFS SETUP STARTS HERE########################
+  EFSMountTargetSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Condition: WantsEFS
+    Properties:
+      GroupDescription: MountTargetSG
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: '-1'
+      SecurityGroupIngress:
+        - CidrIp: !Ref VpcCIDR
+          IpProtocol: tcp
+          FromPort: '2049'
+          ToPort: '2049'
+      VpcId: !Ref VPC
+
+  ProjectEFSSystem:
+    Type: AWS::EFS::FileSystem
+    Condition: WantsEFS
+    Properties:
+      Encrypted: true
+      FileSystemTags:
+        - Key: Name
+          Value: !Ref EFSName
+        - Key: Team
+          Value: !Ref TeamName
+        - Key: Contact
+          Value: !Ref ContactEmail
+        - Key: Workloadtype
+          Value: !Ref WorkloadValue
+        - Key: Project
+          Value: !Ref ProjectName
+      LifecyclePolicies:
+        - "TransitionToIA" : AFTER_14_DAYS
+      PerformanceMode: maxIO
+      ProvisionedThroughputInMibps: !Ref EFSThroughput
+      ThroughputMode: provisioned
+
+  EFSMountTarget1:
+    Type: AWS::EFS::MountTarget
+    Condition: WantsEFS
+    Properties:
+      FileSystemId: !Ref ProjectEFSSystem
+      SubnetId: !If [WantsPublicSubnets, !Ref PublicSubnet1, !Ref PrivateSubnet1]
+      SecurityGroups:
+        - Ref: EFSMountTargetSecurityGroup
+
+  EFSMountTarget2:
+    Type: AWS::EFS::MountTarget
+    Condition: WantsEFS
+    Properties:
+      FileSystemId: !Ref ProjectEFSSystem
+      SubnetId: !If [WantsPublicSubnets, !Ref PublicSubnet2, !Ref PrivateSubnet2]
+      SecurityGroups:
+        - Ref: EFSMountTargetSecurityGroup
+########################CREATION OF EFS SETUP ENDS HERE########################
+
+########################CREATION OF LUSTRE SETUP STARTS HERE########################
+  LustreSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Condition: WantsLustre
+    Properties:
+      GroupDescription: MountTargetSG
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: '-1'
+      SecurityGroupIngress:
+        - CidrIp: !Ref VpcCIDR
+          IpProtocol: tcp
+          FromPort: '988'
+          ToPort: '988'
+        - CidrIp: !Ref VpcCIDR
+          IpProtocol: tcp
+          FromPort: '1021'
+          ToPort: '1023'
+      VpcId: !Ref VPC
+
+  ShepardLustreBucket:
+    Type: AWS::S3::Bucket
+    Condition: WantsNewBucketForLustre
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      BucketName:
+        Fn::Sub:
+          "${LustreBucketName}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: InfrequentAccessRule
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+      Tags:
+        - Key: Team
+          Value: !Ref TeamName
+        - Key: Contact
+          Value: !Ref ContactEmail
+        - Key: Workloadtype
+          Value: !Ref WorkloadValue
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ProjectLustreSystem:
+    Type: AWS::FSx::FileSystem
+    Condition: WantsLustre
+    Properties:
+      FileSystemType: "LUSTRE"
+      StorageCapacity: !Ref LustreStorageCapacity
+      SubnetIds: [!If [WantsPublicSubnets, !Ref PublicSubnet1, !Ref PrivateSubnet1]]
+      SecurityGroupIds: [!Ref LustreSecurityGroup]
+      Tags:
+        - Key: Name
+          Value: !Ref LustreName
+        - Key: Team
+          Value: !Ref TeamName
+        - Key: Contact
+          Value: !Ref ContactEmail
+        - Key: Workloadtype
+          Value: !Ref WorkloadValue
+        - Key: Project
+          Value: !Ref ProjectName
+      LustreConfiguration:
+        DeploymentType: "SCRATCH_2"
+        ImportPath: !Join ["", ["s3://", !Ref LustreBucketName]]
+        ExportPath: !Join ["", ["s3://", !Ref LustreBucketName]]
+########################CREATION OF LUSTRE SETUP ENDS HERE########################
+
+########################CREATION OF DYNAMO DB STARTS HERE########################
+  ShepardDynamoDB:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "UUID"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "UUID"
+          KeyType: "HASH"
+      BillingMode: "PAY_PER_REQUEST"
+      SSESpecification:
+        SSEEnabled: true
+      TableName: !Ref TableName
+      Tags:
+        - Key: Name
+          Value: !Ref TableName
+        - Key: Team
+          Value: !Ref TeamName
+        - Key: Contact
+          Value: !Ref ContactEmail
+        - Key: Workloadtype
+          Value: !Ref WorkloadValue
+        - Key: Project
+          Value: !Ref ProjectName
+      TimeToLiveSpecification:
+        AttributeName: 'END_TIME'
+        Enabled: True
+########################CREATION OF DYNAMO DB ENDS HERE########################
+
+########################CREATION OF LAMBDA 1 (for processing s3 uploads) STARTS HERE########################
+  #this allows SQS to invoke lambda (for normal receive SQS messages)
+  LambdaInvokePermissionNormalReceive:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      Principal: sqs.amazonaws.com
+      SourceArn: !GetAtt SQSShepardReceiveQueue.Arn
+      FunctionName:
+        !GetAtt ShepardSchedulerFunction.Arn
+
+  #here's where the role for our lambda function gets made.
+  ShepardLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: ShepardRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        - PolicyName: AllowSQSToDLQQueue
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:*
+                Resource: !GetAtt SQSShepardReceiveQueueDLQ.Arn
+        - PolicyName: AllowSQSToInputQueue
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:*
+                Resource: !GetAtt SQSShepardReceiveQueue.Arn
+        - PolicyName: AllowS3ToBucket
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: !Sub 'arn:aws:s3:::${InputsBucket}'
+        - PolicyName: AllowS3ToBucketContents
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: !Sub 'arn:aws:s3:::${InputsBucket}/*'
+        - PolicyName: AllowDynamoDB
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:*
+                Resource: !GetAtt ShepardDynamoDB.Arn
+        - PolicyName: AllowAccessToJobQueue
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - batch:*
+                Resource: !Ref ShepardJobQueue
+        - PolicyName: AllowAccessToJobDefinition
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - batch:*
+                Resource: !Ref BatchJobDefinition
+
+  #here's where the lambda function gets made. because it receives jobs from an SQS queue and its the only function running in this account the scaling of this function for us will be taken care of.
+  ShepardSchedulerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt ShepardLambdaRole.Arn
+      Timeout: 900
+      MemorySize: !Ref LambdaMemorySize
+      Environment:
+        Variables:
+          dynamodb_table_name: !Ref ShepardDynamoDB
+          job_queue_name: !Ref ShepardJobQueue
+          job_definition_arn: !Ref BatchJobDefinition
+          project_name: !Ref ProjectName
+          days_to_keep_failed_launch_indexes: !Ref DaysToKeepFailedLaunchIndexes
+          reserved_keywords: "['UUID','START_TIME','END_TIME','JOB_STATUS','EFS_INPUT_NAME','EFS_OUTPUT_NAME','LUSTRE_INPUT_NAME','LUSTRE_OUTPUT_NAME','ROOT_INPUT_NAME','ROOT_OUTPUT_NAME','INPUTS_BUCKET','OUTPUTS_BUCKET','ERROR_BUCKET','INPUT_ZIP_NAME','PATH','HOSTNAME','USES_EFS','USES_LUSTRE','LUSTRE_READ_ONLY_PATH','EFS_READ_ONLY_PATH','ULIMIT_FILENO','IS_INVOKED','ALLOW_DOCKER_ACCESS']"
+      Code:
+        ZipFile: |
+          import uuid
+          import datetime
+          import time
+          import json
+          import boto3
+          import logging
+          import os
+          import shutil
+          from io import BytesIO
+          import zipfile
+          import sys
+          import zlib
+          import ast
+          logger=logging.getLogger()
+          logger.setLevel(logging.INFO)
+          table_name=os.getenv('dynamodb_table_name')
+          def common_member(a,b):
+           a_set=set(a)
+           b_set=set(b)
+           if len(a_set.intersection(b_set))>0:
+            return(True)
+           return(False)
+          def create_item(table_name,data_loaded,UUID):
+           dynamodb_resource=boto3.resource('dynamodb')
+           table=dynamodb_resource.Table(table_name)
+           item={}
+           for k,v in data_loaded.items():
+            item[k]=v
+           if common_member(ast.literal_eval(os.getenv('reserved_keywords')),[x.upper()for x in data_loaded.keys()]):
+            raise ValueError('You used a reserved keyword in this job json.')
+           item={}
+           item['UUID']=UUID
+           item['END_TIME']=int((datetime.datetime.now()+datetime.timedelta(days=int(str(os.getenv('days_to_keep_failed_launch_indexes'))))).timestamp())
+           item['START_TIME']='not_yet_initiated'
+           item['JOB_STATUS']='not_yet_initiated'
+           for k,v in data_loaded.items():
+            item[k]=v
+           with table.batch_writer()as batch:
+            response=batch.put_item(Item=item)
+           return 0
+          def submit_new_job(UUID,ZIP,sqs,queue_url,s3event):
+           t_end=time.time()+60*10
+           submitted_successfully=False
+           while time.time()<t_end:
+            response=boto3.client('batch').submit_job(jobName=UUID,jobQueue=os.getenv('job_queue_name'),jobDefinition=os.getenv('job_definition_arn'),containerOverrides={'environment':[{'name':'UUID','value':UUID},{'name':'INPUT_ZIP_NAME','value':ZIP},{'name':'IS_INVOKED','value':'False'}]})
+            if response['ResponseMetadata']['HTTPStatusCode']==200:
+             submitted_successfully=True
+             break
+           if not submitted_successfully:
+            t_end=time.time()+60*2
+            submitted_successfully=False
+            while time.time()<t_end:
+             response=sqs.send_message(QueueUrl=queue_url,MessageBody=s3event)
+             if response['ResponseMetadata']['HTTPStatusCode']==200:
+              submitted_successfully=True
+              break
+            if not submitted_successfully:
+             raise ValueError('Failed to send SQS message back to queue!')
+          def fetch(s3,bucket_name,key,start,len):
+           end=start+len-1
+           return s3.get_object(Bucket=bucket_name,Key=key,Range='bytes={}-{}'.format(start,end))['Body'].read()
+          def parse_int(bytes):
+           val=bytes[0]+(bytes[1]<<8)
+           if len(bytes)>3:
+            val+=(bytes[2]<<16)+(bytes[3]<<24)
+           return val
+          def lambda_handler(event,context):
+           logger.info(event)
+           sqs=boto3.client('sqs')
+           s3event=json.loads(event['Records'][0]['body'])
+           key=s3event['Records'][0]['s3']['object']['key']
+           bucket_name=s3event['Records'][0]['s3']['bucket']['name']
+           queue_url=sqs.get_queue_url(QueueName=event['Records'][0]['eventSourceARN'].split(':')[-1])
+           zip_obj=boto3.resource('s3').Object(bucket_name=bucket_name,key=key)
+           size=zip_obj.content_length
+           s3=boto3.client('s3')
+           eocd=fetch(s3,bucket_name,key,size-22,22)
+           cd_start=parse_int(eocd[16:20])
+           cd_size=parse_int(eocd[12:16])
+           cd=fetch(s3,bucket_name,key,cd_start,cd_size)
+           zip=zipfile.ZipFile(BytesIO(cd+eocd))
+           for zi in zip.filelist:
+            if zi.filename=="inputs.txt":
+             file_head=fetch(s3,bucket_name,key,cd_start+zi.header_offset+26,4)
+             name_len=parse_int(file_head[0:2])
+             extra_len=parse_int(file_head[2:4])
+             content=fetch(s3,bucket_name,key,cd_start+zi.header_offset+30+name_len+extra_len,zi.compress_size)
+             if zi.compress_type==zipfile.ZIP_DEFLATED:
+              data_loaded=json.loads(zlib.decompressobj(-15).decompress(content))
+             else:
+              data_loaded=json.loads(content)
+           UUID=str(context.aws_request_id)+str(s3event['Records'][0]['responseElements']['x-amz-request-id'])+str(s3event['Records'][0]['s3']['object']['eTag'])
+           submit_new_job(UUID,key,sqs,queue_url,s3event)
+           create_item(table_name,data_loaded,UUID)
+           return{'statusCode':200,'body':json.dumps(str(os.getenv('project_name'))+' scheduler executed successfully!')}
+      Tags:
+        - Key: Team
+          Value: !Ref TeamName
+        - Key: Contact
+          Value: !Ref ContactEmail
+        - Key: Workloadtype
+          Value: !Ref WorkloadValue
+        - Key: Project
+          Value: !Ref ProjectName
+      Runtime: python3.7
+########################CREATION OF LAMBDA 1 (for processing s3 uploads) ENDS HERE########################
+
+########################CREATION OF LAMBDA 2 (for processing api endpoint calls) STARTS HERE########################
+
+  #here's where the role for our lambda function gets made.
+  ShepardLambdaRoleBatchingEndpoint:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: ShepardRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        - PolicyName: AllowDynamoDB
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:*
+                Resource: !GetAtt ShepardDynamoDB.Arn
+        - PolicyName: AllowAccessToJobQueue
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - batch:*
+                Resource: !Ref ShepardJobQueue
+        - PolicyName: AllowAccessToJobDefinition
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - batch:*
+                Resource: !Ref BatchJobDefinition
+
+  #here's where the lambda function gets made. because it receives jobs from an SQS queue and its the only function running in this account the scaling of this function for us will be taken care of.
+  ShepardSchedulerFunctionBatchingEndpoint:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt ShepardLambdaRoleBatchingEndpoint.Arn
+      Timeout: 900
+      MemorySize: !Ref LambdaMemorySize
+      Environment:
+        Variables:
+          dynamodb_table_name: !Ref ShepardDynamoDB
+          job_queue_name: !Ref ShepardJobQueue
+          job_definition_arn: !Ref BatchJobDefinition
+          project_name: !Ref ProjectName
+          days_to_keep_failed_launch_indexes: !Ref DaysToKeepFailedLaunchIndexes
+          reserved_keywords: "['UUID','START_TIME','END_TIME','JOB_STATUS','EFS_INPUT_NAME','EFS_OUTPUT_NAME','LUSTRE_INPUT_NAME','LUSTRE_OUTPUT_NAME','ROOT_INPUT_NAME','ROOT_OUTPUT_NAME','INPUTS_BUCKET','OUTPUTS_BUCKET','ERROR_BUCKET','INPUT_ZIP_NAME','PATH','HOSTNAME','USES_EFS','USES_LUSTRE','LUSTRE_READ_ONLY_PATH','EFS_READ_ONLY_PATH','ULIMIT_FILENO','IS_INVOKED','ALLOW_DOCKER_ACCESS']"
+      Code:
+        ZipFile: |
+          import uuid
+          import datetime
+          import time
+          import json
+          import boto3
+          import logging
+          import os
+          import shutil
+          from io import BytesIO
+          import zipfile
+          import sys
+          import zlib
+          import base64
+          import ast
+          logger=logging.getLogger()
+          logger.setLevel(logging.INFO)
+          table_name=os.getenv('dynamodb_table_name')
+          def common_member(a,b):
+           a_set=set(a)
+           b_set=set(b)
+           if len(a_set.intersection(b_set))>0:
+            return(True)
+           return(False)
+          def create_item(table_name,data_loaded,UUID):
+           dynamodb_resource=boto3.resource('dynamodb')
+           table=dynamodb_resource.Table(table_name)
+           item={}
+           for k,v in data_loaded.items():
+            item[k]=v
+           if common_member(ast.literal_eval(os.getenv('reserved_keywords')),[x.upper()for x in data_loaded.keys()]):
+            raise ValueError('You used a reserved keyword in this job json.')
+           item={}
+           item['UUID']=UUID
+           item['END_TIME']=int((datetime.datetime.now()+datetime.timedelta(days=int(str(os.getenv('days_to_keep_failed_launch_indexes'))))).timestamp())
+           item['START_TIME']='not_yet_initiated'
+           item['JOB_STATUS']='not_yet_initiated'
+           for k,v in data_loaded.items():
+            item[k]=v
+           with table.batch_writer()as batch:
+            response=batch.put_item(Item=item)
+           return 0
+          def submit_new_job(UUID):
+           t_end=time.time()+60*10
+           submitted_successfully=False
+           while time.time()<t_end:
+            response=boto3.client('batch').submit_job(jobName=UUID,jobQueue=os.getenv('job_queue_name'),jobDefinition=os.getenv('job_definition_arn'),containerOverrides={'environment':[{'name':'UUID','value':UUID},{'name':'INPUT_ZIP_NAME','value':'None'},{'name':'IS_INVOKED','value':'True'}]})
+            if response['ResponseMetadata']['HTTPStatusCode']==200:
+             submitted_successfully=True
+             break
+           if not submitted_successfully:
+            raise ValueError('Failed to submit job to batch queue!')
+          def lambda_handler(event,context):
+           logger.info(event)
+           data_loaded=event
+           UUID=str(context.aws_request_id)+str(base64.b16encode(str.encode(str(event))).decode("utf-8"))[:50]
+           submit_new_job(UUID)
+           create_item(table_name,data_loaded,UUID)
+           return{'statusCode':200,'body':json.dumps(str(os.getenv('project_name'))+' scheduler executed successfully!')}
+      Tags:
+        - Key: Team
+          Value: !Ref TeamName
+        - Key: Contact
+          Value: !Ref ContactEmail
+        - Key: Workloadtype
+          Value: !Ref WorkloadValue
+        - Key: Project
+          Value: !Ref ProjectName
+      Runtime: python3.7
+########################CREATION OF LAMBDA 2 (for processing api endpoint calls) ENDS HERE########################
+
+########################CREATION OF USER INTERFACE SETUP STARTS HERE########################
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      -
+        Label:
+          default: "S3 Parameters: Give names to the S3 buckets that will store your inputs to trigger runs, logs in the events of crashes and outputs from runs."
+        Parameters:
+          - InputsBucket
+          - OutputsBucket
+          - QuickDeployBucket
+      -
+        Label:
+          default: "Tagging Parameters: Any place where tags can be attached we will attach these tags."
+        Parameters:
+          - ProjectName
+          - TeamName
+          - ContactEmail
+          - WorkloadValue
+      -
+        Label:
+          default: "ECR Parameters: Specify a name for the ECR repo that will be made and associated with this architecture."
+        Parameters:
+          - ECRRepoName
+      -
+        Label:
+          default: "DynamoDB Table Parameters: Give a name to the DynamoDB that will be associated with this architecture."
+        Parameters:
+          - TableName
+      -
+        Label:
+          default: "EFS Parameters: If you choose to provision an EFS for use with this architecture you can customize it here."
+        Parameters:
+          - EFSName
+          - EFSThroughput
+      -
+        Label:
+          default: "Secrets Manager Parameters: Give a name to the secret store that will be associated with this architecture."
+        Parameters:
+          - SecretsManagerName
+      -
+        Label:
+          default: "Batch Parameters: Customize the way in which batch will work for this architecture!"
+        Parameters:
+          - BatchInstanceNames
+          - DesiredRam
+          - DesiredCPU
+          - MaxCPU
+          - InstanceTypes
+          - LaunchTemplateName
+          - ComputeEnvironmentType
+          - ComputeEnvironmentName
+          - QueueName
+          - JobDefinitionName
+          - Ec2KeyPair
+          - DefaultCapacity
+          - UlimitsNoFilesOpen
+      -
+        Label:
+          default: "Lustre Parameters: Customize a lustre file system if you want to use one with this architecture!"
+        Parameters:
+          - LustreName
+          - LustreBucketName
+          - LustreStorageCapacity
+      -
+        Label:
+          default: "EBS Volume Parameters: Customize features for the EBS volumes that AWS Batch will use with your EC2 instances."
+        Parameters:
+          - SizeOfRootDisk
+          - SizeOfContainerStorageDisk
+      -
+        Label:
+          default: "SQS Parameters: Give a name to the SQS queue that will be associated with your architecture."
+        Parameters:
+          - SQSName
+      -
+        Label:
+          default: "Lambda Parameters: Customize the behavior of the lambda function that will process inputs to the trigger S3 bucket."
+        Parameters:
+          - LambdaMemorySize
+          - DaysToKeepFailedLaunchIndexes
+      -
+        Label:
+          default: "Networking Infrastructure Parameters: For any new networking infrastructure that gets spun up for an architecture."
+        Parameters:
+          - EnvironmentName
+          - VpcCIDR
+          - PublicSubnet1CIDR
+          - PublicSubnet2CIDR
+          - PrivateSubnet1CIDR
+          - PrivateSubnet2CIDR
+          - CIDRToAllowSSHAccessTo
+          - AllowSSHAccessToCIDRToAllowSSHAccessTo
+          - MakeSubnetsPublic
+      -
+        Label:
+          default: "Extra IAM Policy For Container Role Parameters: If you want to grant extra permissions to a Shepard architecture's jobs (i.e. its containers) beyond those that are normally granted these parameters allow you to specify your own IAM policy and apply it in addition to permissions normally granted (otherwise should you not desire additional IAM permissions you can ignore these parameters)."
+        Parameters:
+          - ToggleIncludeExtraIAMPolicyForContainerRole
+          - ExtraIAMPolicyForContainerRole
+      -
+        Label:
+          default: "Toggle Parameters: Boolean toggle parameters for this architecture."
+        Parameters:
+          - ToggleEFS
+          - ToggleLustre
+          - ToggleVariableEBSVolumeSizes
+          - ToggleUseExistingBucketForLustre
+          - ToggleAllowAccessToDockerDaemon
+          - ToggleAllocationStrategy
+########################CREATION OF USER INTERFACE SETUP ENDS HERE########################

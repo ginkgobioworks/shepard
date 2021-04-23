@@ -1,0 +1,70 @@
+# Arbitrary worker container
+# Author: jmevorach
+# Date: 04/01/2020
+
+########################### ESTABLISH BASE IMAGE ##################################
+FROM docker:dind
+MAINTAINER jacob@ginkgobioworks.com
+# ---------------------
+# SET WORKING DIRECTORY TO ROOT DIRECTORY
+# ---------------------
+WORKDIR /
+
+# ---------------------
+# APK UPDATE
+# ---------------------
+RUN apk update 
+
+# ---------------------
+# APK UPGRADE
+# ---------------------
+RUN apk upgrade
+
+# ---------------------
+# APK GET OPENRC
+# ---------------------
+RUN apk add openrc --no-cache
+
+# ---------------------
+# APK GET TREE
+# ---------------------
+RUN apk add tree --no-cache
+
+# ---------------------
+# APK GET PYTHON3
+# ---------------------
+RUN apk add --no-cache --virtual .build-deps g++ python3-dev libffi-dev openssl-dev && \
+    apk add --no-cache --update python3 && \
+    apk add --no-cache py3-pip && \
+    pip3 install --upgrade pip
+
+# ---------------------
+# PIP INSTALL BOTO3
+# ---------------------
+RUN pip3 install boto3
+
+# ---------------------
+# PIP INSTALL AWSCLI
+# ---------------------
+RUN pip3 install awscli
+
+# ---------------------
+# IMPORT GUEST DOCKERFILE AND CONTENTS
+# ---------------------
+RUN mkdir docker_folder
+COPY docker_folder /docker_folder
+
+# ---------------------
+# IMPORT WORKER CODE
+# ---------------------
+ADD arbitrary_worker_code.py /
+
+# ---------------------
+# SET WORKING DIRECTORY TO ROOT DIRECTORY
+# ---------------------
+WORKDIR /
+
+# ---------------------
+# SET CMD FOR BUILDING WORKER CONTAINER
+# ---------------------
+CMD cd docker_folder && docker build -f Dockerfile.txt -t payload_image:latest . && docker save -o payload.tar payload_image:latest && ls -lah && mv payload.tar / && rm -f payload.tar && cd ..
