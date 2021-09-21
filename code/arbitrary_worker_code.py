@@ -339,12 +339,12 @@ if __name__ == "__main__":
 		# specfiy a run.sh script
 		if QUICK_DEPLOY_DIRECTORY != 'None':
 			if USES_LUSTRE == "True":
-				call = call + " chmod +x " + os.path.join(LUSTRE_INPUT_NAME, QUICK_DEPLOY_DIRECTORY,'run.sh') + ' && ' + os.path.join(LUSTRE_INPUT_NAME,QUICK_DEPLOY_DIRECTORY,'run.sh') + ' '
+				call = call + ' sh -c "chmod +x ' + os.path.join(LUSTRE_INPUT_NAME, QUICK_DEPLOY_DIRECTORY,'run.sh') + ' && cd ' + os.path.join(LUSTRE_INPUT_NAME,QUICK_DEPLOY_DIRECTORY) + ' && ' + 'sh run.sh' + '"'
 			else:
 				if USES_EFS == "True":
-					call = call + " chmod +x " + os.path.join(EFS_INPUT_NAME, QUICK_DEPLOY_DIRECTORY,'run.sh') + ' && ' + os.path.join(EFS_INPUT_NAME,QUICK_DEPLOY_DIRECTORY,'run.sh') + ' '
+					call = call + ' sh -c "chmod +x ' + os.path.join(EFS_INPUT_NAME, QUICK_DEPLOY_DIRECTORY,'run.sh') + ' && cd ' + os.path.join(EFS_INPUT_NAME,QUICK_DEPLOY_DIRECTORY) + ' && ' + 'sh run.sh' + '"'
 				else:
-					call = call + " chmod +x " + os.path.join(ROOT_INPUT_NAME, QUICK_DEPLOY_DIRECTORY,'run.sh') + ' && ' + os.path.join(ROOT_INPUT_NAME,QUICK_DEPLOY_DIRECTORY,'run.sh') + ' '
+					call = call + ' sh -c "chmod +x ' + os.path.join(ROOT_INPUT_NAME, QUICK_DEPLOY_DIRECTORY,'run.sh') + ' && cd ' + os.path.join(ROOT_INPUT_NAME,QUICK_DEPLOY_DIRECTORY) + ' && ' + 'sh run.sh' + '"'
 
 		# make main call
 		try:
