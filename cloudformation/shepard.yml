@@ -85,7 +85,7 @@ Parameters:
   ComputeEnvironmentName:
     Description: A name for the batch compute environment.
     Type: String
-    Default: "shepard-compute-envrionment"
+    Default: "shepard-compute-environment"
 
   QueueName:
     Description: A name for the batch job queue.
